@@ -109,37 +109,79 @@ if( $#ARGV == -1 ) {
 if( $#ARGV < 2 && $ARGV[0] eq 'info' ) {
 
   # If no path provided
-  die "\nUsage: ".basename($0)." info <filepath>\n\n" if $#ARGV == 0 ;
+  die "\nUsage: ".basename($0)." info <filepath|dirpath>\n\n" if $#ARGV == 0 ;
 
-  # If invalid file path
-  my $isValid = isValidMKV($ARGV[1]);
-  die "\nTarget ".$isValid.": \"".$ARGV[1]."\"\n\n" if $isValid ne 'ok';
+  # If is file
+  if( -f $ARGV[1] ) {
 
-  # Get info
-  my @mediainfo = split("\n\n", `mediainfo "$ARGV[1]"`);
-  my $mkvmerge  = `mkvmerge -i "$ARGV[1]"`;
+    # If invalid file path
+    my $isValid = isValidMKV($ARGV[1]);
+    die "\nTarget ".$isValid.": \"".$ARGV[1]."\"\n\n" if $isValid ne 'ok';
 
-  # Merge mediainfo with mkvmerge
-  foreach my $track (@mediainfo) {
-    if( $track =~ /^(Video|Audio|Text)/ ) {
+    # Get info
+    my @mediainfo = split("\n\n", `mediainfo "$ARGV[1]"`);
+    my $mkvmerge  = `mkvmerge -i "$ARGV[1]"`;
 
-      my $trackType = lc($1);
-      my $ID = -1;
-      my $Language = 'Unknown';
+    # Merge mediainfo with mkvmerge
+    foreach my $track (@mediainfo) {
+      if( $track =~ /^(Video|Audio|Text)/ ) {
 
-      if( $track =~ /ID[ ]+\: ([0-9]+)\n/ )
-        { $ID = $1-1; }
-      if( $track =~ /Language[ ]+\: ([a-zA-Z\- ]+)\n/ )
-        { $Language = $1; }
+        my $trackType = lc($1);
+        my $ID = -1;
+        my $Language = 'Unknown';
 
-      if( $trackType eq 'text' )
-        { $trackType = 'subtitles'; }
+        if( $track =~ /ID[ ]+\: ([0-9]+)\n/ )
+          { $ID = $1-1; }
+        if( $track =~ /Language[ ]+\: ([a-zA-Z\- ]+)\n/ )
+          { $Language = $1; }
 
-      $mkvmerge =~ s/(Track ID $ID: $trackType .*)\n/$1 ($Language)\n/;
+        if( $trackType eq 'text' )
+          { $trackType = 'subtitles'; }
+
+        $mkvmerge =~ s/(Track ID $ID: $trackType .*)\n/$1 ($Language)\n/;
+      }
     }
+
+    die $mkvmerge;
   }
 
-  die $mkvmerge;
+  # If is dir
+  else { if( -d $ARGV[1] ) {
+
+    my $file = '';
+    my @validFiles = ();
+
+    # If dir doesn't have '/' ending
+    if( $ARGV[1] !~ /\/$/ ) {
+      $ARGV[1] .= '/';
+    }
+
+    # Parse files in dir
+    opendir(DIR, $ARGV[1]) or die $!;
+    while( $file = readdir(DIR) ) {
+
+      # Skip invalid files
+      next if( $file =~ m/^\./ || isValidMKV($ARGV[1].$file) ne 'ok' );
+
+      push(@validFiles, $ARGV[1].$file);
+    }
+    closedir(DIR);
+
+    # If no valid files found
+    if( !@validFiles ) {
+      die "\nThere are no MKV files in \"".$ARGV[1]."\"\n\n";
+    }
+
+    # Launch info for each file
+    foreach $file (@validFiles) {
+      print "\n";
+      system($0." info '".$file."'");
+    }
+
+    die "\n";
+  } }
+
+  die "Invalid path: \"".$ARGV[1]."\"";
 }
 
 # REMUX
