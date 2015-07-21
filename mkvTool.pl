@@ -33,7 +33,7 @@ if( $downloader ne '' ) {
       print "WARNING: You don't have write permissions for \"".$0."\"\n\n";
     }
     else {
-      print "CMD: ".$downloader." \"".$updateUrl."\" > \"".$0."\"\n";
+      print "CMD: ".$downloader." \"".$updateUrl."\" > \"".$0."\"\n\n";
       system($downloader." \"".$updateUrl."\" > \"".$0."\"");
       print "Updated to v".$remoteVersion."\nLaunch the script again!\n\n";
       exit;
