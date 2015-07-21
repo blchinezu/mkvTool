@@ -6,7 +6,40 @@ use File::Basename;
 use File::Copy;
 use File::Path;
 
-use Data::Dumper; # Debug
+# use Data::Dumper; # Debug
+
+# Update if necessary
+our $localVersion = '1.0';
+our $versionUrl = "https://raw.githubusercontent.com/blchinezu/mkvTool/master/VERSION";
+our $updateUrl  = "https://raw.githubusercontent.com/blchinezu/mkvTool/master/mkvTool.pl";
+our $downloader = '';
+if( `which curl` ne '' ) {
+  $downloader = "curl -s";
+}
+else {
+  if( `which wget` ne '' ) {
+    $downloader = "wget -q -O -";
+  }
+  else  {
+    print "\nWARNING: For auto-update to work you need curl or wget installed!\n\n";
+  }
+}
+if( $downloader ne '' ) {
+
+  our $remoteVersion = `$downloader "$versionUrl"`;
+  if( $remoteVersion =~ /^[0-9]+\.[0-9]+$/ && $localVersion != $remoteVersion ) {
+    print "\nUpdating from v".$localVersion." to v".$remoteVersion."\n";
+    if( `touch "$0"` =~ /Permission denied/ ) {
+      print "WARNING: You don't have write permissions for \"".$0."\"\n\n";
+    }
+    else {
+      print "CMD: ".$downloader." \"".$updateUrl."\" > \"".$0."\"\n";
+      system($downloader." \"".$updateUrl."\" > \"".$0."\"");
+      print "Updated to v".$remoteVersion."\nLaunch the script again!\n\n";
+      exit;
+    }
+  }
+}
 
 # Valid options
 our $options = "  ".join("\n  ", (
@@ -92,6 +125,7 @@ our %cmdMask = (
 
 # Usage
 our $usage =
+  "\nVersion: v".$localVersion."\n".
   "\nUsage: ".basename($0)." <options>\n".
   "\nOptions:\n".
   $options."\n\n".
