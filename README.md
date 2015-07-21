@@ -1,5 +1,5 @@
 # mkvTool
-### A perl wrapper for mkvtoolnix
+### Wrapper for mkvtoolnix written in Perl.
 
     Usage: mkvTool.pl <options>
 
