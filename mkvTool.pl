@@ -108,8 +108,10 @@ if( $#ARGV == -1 ) {
 # INFO
 if( $#ARGV < 2 && $ARGV[0] eq 'info' ) {
 
-  # If no path provided
-  die "\nUsage: ".basename($0)." info <filepath|dirpath>\n\n" if $#ARGV == 0 ;
+  # If no path provided use current dir
+  if( $#ARGV == 0 ) {
+    $ARGV[1] = "./";
+  }
 
   # If is file
   if( -f $ARGV[1] ) {
