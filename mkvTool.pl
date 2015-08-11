@@ -9,7 +9,7 @@ use File::Path;
 # use Data::Dumper; # Debug
 
 # Update if necessary
-our $localVersion = '1.0';
+our $localVersion = '1.1';
 our $versionUrl = "https://raw.githubusercontent.com/blchinezu/mkvTool/master/VERSION";
 our $updateUrl  = "https://raw.githubusercontent.com/blchinezu/mkvTool/master/mkvTool.pl";
 our $downloader = '';
@@ -223,122 +223,169 @@ if( $#ARGV < 2 && $ARGV[0] eq 'info' ) {
 # REMUX
 if( $#ARGV < 2 && $ARGV[0] eq 'remux' ) {
 
-  # If no path provided
-  die "\nUsage: ".basename($0)." remux <filepath>\n\n" if $#ARGV == 0 ;
+  # If no path provided use current dir
+  if( $#ARGV == 0 ) {
+    $ARGV[1] = "./";
+  }
 
-  # If invalid file path
-  my $isValid = isValidMKV($ARGV[1]);
-  die "\nTarget ".$isValid.": \"".$ARGV[1]."\"\n\n" if $isValid ne 'ok';
+  # If is file
+  if( -f $ARGV[1] ) {
 
-  # Get info
-  my @info = split("\n", `mkvmerge -i "$ARGV[1]"`);
+    # If no path provided
+    die "\nUsage: ".basename($0)." remux <filepath>\n\n" if $#ARGV == 0 ;
 
-  # Input file without extension (for result checking)
-  my $inputNoExt = $ARGV[1];
-  $inputNoExt =~ s/\.mkv$//i;
+    # If invalid file path
+    my $isValid = isValidMKV($ARGV[1]);
+    die "\nTarget ".$isValid.": \"".$ARGV[1]."\"\n\n" if $isValid ne 'ok';
 
-  # Demux input file
-  my @video    = [];
-  my @audio    = [];
-  my @subtitle = [];
-  foreach my $track (@info) {
-    if( $track =~ /^.*Track ID ([0-9]+): ([a-zA-Z]+) .*/ ) {
+    # Get info
+    my @info = split("\n", `mkvmerge -i "$ARGV[1]"`);
 
-      my $id = $1;
-      my $type = $2;
+    # Input file without extension (for result checking)
+    my $inputNoExt = $ARGV[1];
+    $inputNoExt =~ s/\.mkv$//i;
 
-      my $ext = $type;
-      if( $type eq 'subtitles' ) {
-        $type = 'subtitle';
-        $ext = 'srt';
-      }
+    # Demux input file
+    my @video    = [];
+    my @audio    = [];
+    my @subtitle = [];
+    foreach my $track (@info) {
+      if( $track =~ /^.*Track ID ([0-9]+): ([a-zA-Z]+) .*/ ) {
 
-      my $extractedFile = $inputNoExt.'.'.$id.'.'.$ext;
+        my $id = $1;
+        my $type = $2;
 
-      # print "Extracting $type with id $id...\n";
+        my $ext = $type;
+        if( $type eq 'subtitles' ) {
+          $type = 'subtitle';
+          $ext = 'srt';
+        }
 
-      # VIDEO
-      if( $type eq 'video' ) {
-        system("$0 $type extract $id target \"$ARGV[1]\"");
-        push(@video, $extractedFile);
-      }
+        my $extractedFile = $inputNoExt.'.'.$id.'.'.$ext;
 
-      # AUDIO
-      else { if( $type eq 'audio' ) {
-        system("$0 $type extract $id:$id target \"$ARGV[1]\"");
-        push(@audio, $extractedFile);
-      }
+        # print "Extracting $type with id $id...\n";
 
-      # SUBTITLE
-      else { if( $type eq 'subtitle' ) {
-        system("$0 $type extract $id:$id target \"$ARGV[1]\"");
-        push(@subtitle, $extractedFile);
-      }}}
+        # VIDEO
+        if( $type eq 'video' ) {
+          system("$0 $type extract $id target \"$ARGV[1]\"");
+          push(@video, $extractedFile);
+        }
 
-      # Test if file got extracted
-      if( ! -f $extractedFile ) {
-        die "\nERR: Could not extract \"$extractedFile\"\n\n";
+        # AUDIO
+        else { if( $type eq 'audio' ) {
+          system("$0 $type extract $id:$id target \"$ARGV[1]\"");
+          push(@audio, $extractedFile);
+        }
+
+        # SUBTITLE
+        else { if( $type eq 'subtitle' ) {
+          system("$0 $type extract $id:$id target \"$ARGV[1]\"");
+          push(@subtitle, $extractedFile);
+        }}}
+
+        # Test if file got extracted
+        if( ! -f $extractedFile ) {
+          die "\nERR: Could not extract \"$extractedFile\"\n\n";
+        }
       }
     }
+
+    # Generate remux ordered file list
+    my @demuxed = [];
+    shift(@video);    foreach my $file (@video)    { push(@demuxed, $file); }
+    shift(@audio);    foreach my $file (@audio)    { push(@demuxed, $file); }
+    shift(@subtitle); foreach my $file (@subtitle) { push(@demuxed, $file); }
+    shift(@demuxed);
+
+    my $output = $inputNoExt.'.remux.mkv';
+    my $remux = 'mkvmerge -o "'.$output.'" "'.join('" "', @demuxed).'"';
+    print "\nREMUX into $output\n\n";
+    system($remux);
+
+    die "\nERR: Couldn't remux files!\n\n" if( ! -f $output );
+
+    print "\nREMUX DONE!\n\nRemoving demuxed parts:\n";
+    foreach my $file (@demuxed) {
+      print "unlink($file)\n";
+      unlink($file)
+        or die "\nERR: Couldn't delete demuxed file: $!\n\n";
+    }
+
+    # Input file basename
+    my $inputBasename = basename($ARGV[1]);
+
+    # Create backup dir
+    my $backupDir = $ARGV[1];
+    $backupDir =~ s/$inputBasename$/backup\//;
+    if( ! -d $backupDir ) {
+      print "\nmkdir $backupDir\n";
+      mkdir $backupDir
+        or die "\nERR: Couldn't create backup dir: $!\n\n";
+    }
+
+    # Backup input file
+    my $backup = $backupDir.$inputBasename;
+    if( ! -f $backup ) {
+      print "\nmove(".$ARGV[1].", ".$backup.")\n";
+      move($ARGV[1], $backup)
+        or die "\nERR: Couldn't backup file: $!\n\n";
+    }
+    # Delete input file if backup exists
+    else {
+      print "\nunlink($ARGV[1])\n";
+      unlink($ARGV[1])
+        or die "\nERR: Couldn't delete input file: $!\n\n";
+    }
+
+    # Rename output file
+    print "\nmove(".$output.", ".$ARGV[1].")\n";
+    move($output, $ARGV[1])
+      or die "\nERR: Couldn't rename output file: $!\n\n";
+
+    # Print remuxed file info
+    print "\nREMUX INFO:\n\n";
+    system("$0 info \"$ARGV[1]\"");
+
+    die "\nDONE\n\n";
   }
 
-  # Generate remux ordered file list
-  my @demuxed = [];
-  shift(@video);    foreach my $file (@video)    { push(@demuxed, $file); }
-  shift(@audio);    foreach my $file (@audio)    { push(@demuxed, $file); }
-  shift(@subtitle); foreach my $file (@subtitle) { push(@demuxed, $file); }
-  shift(@demuxed);
+  # If is dir
+  else { if( -d $ARGV[1] ) {
 
-  my $output = $inputNoExt.'.remux.mkv';
-  my $remux = 'mkvmerge -o "'.$output.'" "'.join('" "', @demuxed).'"';
-  print "\nREMUX into $output\n\n";
-  system($remux);
+    my $file = '';
+    my @validFiles = ();
 
-  die "\nERR: Couldn't remux files!\n\n" if( ! -f $output );
+    # If dir doesn't have '/' ending
+    if( $ARGV[1] !~ /\/$/ ) {
+      $ARGV[1] .= '/';
+    }
 
-  print "\nREMUX DONE!\n\nRemoving demuxed parts:\n";
-  foreach my $file (@demuxed) {
-    print "unlink($file)\n";
-    unlink($file)
-      or die "\nERR: Couldn't delete demuxed file: $!\n\n";
-  }
+    # Parse files in dir
+    opendir(DIR, $ARGV[1]) or die $!;
+    while( $file = readdir(DIR) ) {
 
-  # Input file basename
-  my $inputBasename = basename($ARGV[1]);
+      # Skip invalid files
+      next if( $file =~ m/^\./ || isValidMKV($ARGV[1].$file) ne 'ok' );
 
-  # Create backup dir
-  my $backupDir = $ARGV[1];
-  $backupDir =~ s/$inputBasename$/backup\//;
-  if( ! -d $backupDir ) {
-    print "\nmkdir $backupDir\n";
-    mkdir $backupDir
-      or die "\nERR: Couldn't create backup dir: $!\n\n";
-  }
+      push(@validFiles, $ARGV[1].$file);
+    }
+    closedir(DIR);
 
-  # Backup input file
-  my $backup = $backupDir.$inputBasename;
-  if( ! -f $backup ) {
-    print "\nmove(".$ARGV[1].", ".$backup.")\n";
-    move($ARGV[1], $backup)
-      or die "\nERR: Couldn't backup file: $!\n\n";
-  }
-  # Delete input file if backup exists
-  else {
-    print "\nunlink($ARGV[1])\n";
-    unlink($ARGV[1])
-      or die "\nERR: Couldn't delete input file: $!\n\n";
-  }
+    # If no valid files found
+    if( !@validFiles ) {
+      die "\nThere are no MKV files in \"".$ARGV[1]."\"\n\n";
+    }
 
-  # Rename output file
-  print "\nmove(".$output.", ".$ARGV[1].")\n";
-  move($output, $ARGV[1])
-    or die "\nERR: Couldn't rename output file: $!\n\n";
+    # Launch info for each file
+    foreach $file (@validFiles) {
+      print "\n";
+      system($0." remux '".$file."'");
+    }
 
-  # Print remuxed file info
-  print "\nREMUX INFO:\n\n";
-  system("$0 info \"$ARGV[1]\"");
+    die "\nDONE BATCH REMUX\n\n";
+  } }
 
-  die "\nDONE\n\n";
+  die "Invalid path: \"".$ARGV[1]."\"";
 }
 
 # Trim string
