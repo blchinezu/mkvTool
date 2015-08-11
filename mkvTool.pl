@@ -9,7 +9,7 @@ use File::Path;
 # use Data::Dumper; # Debug
 
 # Update if necessary
-our $localVersion = '1.1';
+our $localVersion = '1.2';
 our $versionUrl = "https://raw.githubusercontent.com/blchinezu/mkvTool/master/VERSION";
 our $updateUrl  = "https://raw.githubusercontent.com/blchinezu/mkvTool/master/mkvTool.pl";
 our $downloader = '';
@@ -208,8 +208,11 @@ if( $#ARGV < 2 && $ARGV[0] eq 'info' ) {
       die "\nThere are no MKV files in \"".$ARGV[1]."\"\n\n";
     }
 
+    # Sort files
+    my @sortedValidFiles = sort { lc($a) cmp lc($b) } @validFiles;
+
     # Launch info for each file
-    foreach $file (@validFiles) {
+    foreach $file (@sortedValidFiles) {
       print "\n";
       system($0." info '".$file."'");
     }
@@ -376,8 +379,11 @@ if( $#ARGV < 2 && $ARGV[0] eq 'remux' ) {
       die "\nThere are no MKV files in \"".$ARGV[1]."\"\n\n";
     }
 
+    # Sort files
+    my @sortedValidFiles = sort { lc($a) cmp lc($b) } @validFiles;
+
     # Launch info for each file
-    foreach $file (@validFiles) {
+    foreach $file (@sortedValidFiles) {
       print "\n";
       system($0." remux '".$file."'");
     }
