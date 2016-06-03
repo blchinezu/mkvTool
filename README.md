@@ -10,6 +10,7 @@
       chapter  clean
       set      language <track1>:<lang1>[,<track2>:<lang2>]
       subtitle add      <lang1>[,<lang2>]
+      subtitle fix      <filepath|dirpath>
       subtitle clean
       subtitle extract  <track1>:<lang1>[,<track2>:<lang2>]
       subtitle keep     <track1>[,<track2>]
