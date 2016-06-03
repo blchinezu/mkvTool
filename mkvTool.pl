@@ -9,7 +9,7 @@ use File::Path;
 # use Data::Dumper; # Debug
 
 # Update if necessary
-our $localVersion = '1.2';
+our $localVersion = '1.3';
 our $versionUrl = "https://raw.githubusercontent.com/blchinezu/mkvTool/master/VERSION";
 our $updateUrl  = "https://raw.githubusercontent.com/blchinezu/mkvTool/master/mkvTool.pl";
 our $downloader = '';
@@ -49,6 +49,7 @@ our $options = "  ".join("\n  ", (
   "chapter  clean",
   "set      language <track1>:<lang1>[,<track2>:<lang2>]",
   "subtitle add      <lang1>[,<lang2>]",
+  "subtitle fix      <filepath|dirpath>",
   "subtitle clean",
   "subtitle extract  <track1>:<lang1>[,<track2>:<lang2>]",
   "subtitle keep     <track1>[,<track2>]",
@@ -103,6 +104,9 @@ our %cmdMask = (
   'subtitle clean' => {
     'cmd'   => 'mkvmerge -o <OUTPUT> --disable-track-statistics-tags -S <INPUT>',
     },
+  'subtitle fix' => {
+    'cmd'   => $0.' fix-srt <INPUT>',
+    },
   'set language' => {
     'cmd'   => 'mkvmerge <VALUES> <INPUT> -o <OUTPUT>',
     'split' => ':',
@@ -137,6 +141,14 @@ testDependencies();
 # No args?
 if( $#ARGV == -1 ) {
   die $usage;
+}
+
+# Trim string
+sub trim($) {
+  my $string = shift;
+  $string =~ s/^\s+//;
+  $string =~ s/\s+$//;
+  return $string;
 }
 
 # INFO
@@ -282,7 +294,14 @@ if( $#ARGV < 2 && $ARGV[0] eq 'remux' ) {
 
         # SUBTITLE
         else { if( $type eq 'subtitle' ) {
+
+          # Extract
           system("$0 $type extract $id:$id target \"$ARGV[1]\"");
+
+          # Fix subtitle
+          system("$0 $type fix \"$extractedFile\"");
+
+          # Append to subtitles array
           push(@subtitle, $extractedFile);
         }}}
 
@@ -394,12 +413,150 @@ if( $#ARGV < 2 && $ARGV[0] eq 'remux' ) {
   die "Invalid path: \"".$ARGV[1]."\"";
 }
 
-# Trim string
-sub trim($) {
-  my $string = shift;
-  $string =~ s/^\s+//;
-  $string =~ s/\s+$//;
-  return $string;
+# FIX-SRT
+if( $#ARGV < 2 && $ARGV[0] eq 'fix-srt' ) {
+
+  # If no path provided use current dir
+  if( $#ARGV == 0 ) {
+    $ARGV[1] = "./";
+  }
+
+  # If is file
+  if( -f $ARGV[1] ) {
+
+    # If no path provided
+    die "\nUsage: ".basename($0)." fix-srt <filepath>\n\n" if $#ARGV == 0 ;
+
+    # If invalid file path
+    my $isValid = isValidSrt($ARGV[1]);
+    die "\nTarget ".$isValid.": \"".$ARGV[1]."\"\n\n" if $isValid ne 'ok';
+
+    # Input file without extension (for result checking)
+    my $inputNoExt = $ARGV[1];
+    $inputNoExt =~ s/\.srt$//i;
+
+    # Input file basename
+    my $inputBasename = basename($ARGV[1]);
+
+    # Output file path
+    my $output = $inputNoExt.'.fixed.srt';
+
+    # Get file content
+    # print "\nRead file\n\n";
+    open (IN, $ARGV[1]) || die "\nERR: Can't open file '".$ARGV[1]."' for reading!\n\n";
+    my @lines=<IN>;
+    close IN;
+
+    # Replace bogus characters
+    open (OUT, ">", $output) || die "\nERR: Can't open file '".$output."' for writing!\n\n";
+    foreach my $line (@lines) {
+       $line =~ s/º|ş/ş/g;
+       $line =~ s/ª|Ş/Ş/g;
+       $line =~ s/Ã|Ă/Ă/g;
+       $line =~ s/ã|ă/ă/g;
+       $line =~ s/Â/Â/g;
+       $line =~ s/â/â/g;
+       $line =~ s/Î/Î/g;
+       $line =~ s/î/î/g;
+       $line =~ s/Þ/Ţ/g;
+       $line =~ s/þ/ţ/g;
+       $line =~ s/–/-/g;
+       $line =~ s/“/"/g;
+       $line =~ s/”/"/g;
+       $line =~ s/\r\n/\n/g;
+       print OUT $line;
+       # print OUT utf8::upgrade($line);
+    }
+    close OUT;
+    die "\nERR: Couldn't replace bogus characters!\n\n" if( ! -f $output );
+
+    # Get current encoding
+    my $currentEncoding = trim(`file -b --mime-encoding "$output"`);
+
+    # Change encoding to UTF-16
+    system('iconv -f '.$currentEncoding.' -t utf-16 "'.$output.'" > "'.$output.'.tmp16"');
+    die "\nERR: Couldn't change file encoding to UTF-16!\n\n" if( ! -f $output.'.tmp16' );
+    unlink($output) or die "\nERR: Couldn't delete tmp file: $!\n\n";
+
+    # Change encoding to UTF-8
+    system('iconv -f utf-16le -t utf-8 "'.$output.'.tmp16" > "'.$output.'.tmp8"');
+    die "\nERR: Couldn't change file encoding to UTF-8!\n\n" if( ! -f $output.'.tmp8' );
+    unlink($output.'.tmp16') or die "\nERR: Couldn't delete tmp file: $!\n\n";
+
+    # Rename tmp file to output file
+    move($output.'.tmp8', $output) or die "\nERR: Couldn't rename UTF-8 file: $!\n\n";
+
+    # Create backup dir
+    my $backupDir = $ARGV[1];
+    $backupDir =~ s/$inputBasename$/backup\//;
+    if( ! -d $backupDir ) {
+      print "\nmkdir $backupDir\n";
+      mkdir $backupDir
+        or die "\nERR: Couldn't create backup dir: $!\n\n";
+    }
+
+    # Backup input file
+    my $backup = $backupDir.$inputBasename;
+    if( ! -f $backup ) {
+      print "\nmove(".$ARGV[1].", ".$backup.")\n";
+      move($ARGV[1], $backup)
+        or die "\nERR: Couldn't backup file: $!\n\n";
+    }
+    # Delete input file if backup exists
+    else {
+      print "\nunlink($ARGV[1])\n";
+      unlink($ARGV[1])
+        or die "\nERR: Couldn't delete input file: $!\n\n";
+    }
+
+    # Rename output file
+    print "\nmove(".$output.", ".$ARGV[1].")\n";
+    move($output, $ARGV[1])
+      or die "\nERR: Couldn't rename output file: $!\n\n";
+
+    die "\nDONE\n\n";
+  }
+
+  # If is dir
+  else { if( -d $ARGV[1] ) {
+
+    my $file = '';
+    my @validFiles = ();
+
+    # If dir doesn't have '/' ending
+    if( $ARGV[1] !~ /\/$/ ) {
+      $ARGV[1] .= '/';
+    }
+
+    # Parse files in dir
+    opendir(DIR, $ARGV[1]) or die $!;
+    while( $file = readdir(DIR) ) {
+
+      # Skip invalid files
+      next if( $file =~ m/^\./ || isValidSrt($ARGV[1].$file) ne 'ok' );
+
+      push(@validFiles, $ARGV[1].$file);
+    }
+    closedir(DIR);
+
+    # If no valid files found
+    if( !@validFiles ) {
+      die "\nThere are no valid SRT files in \"".$ARGV[1]."\"\n\n";
+    }
+
+    # Sort files
+    my @sortedValidFiles = sort { lc($a) cmp lc($b) } @validFiles;
+
+    # Launch info for each file
+    foreach $file (@sortedValidFiles) {
+      print "\n";
+      system($0." fix-srt '".$file."'");
+    }
+
+    die "\nDONE BATCH REMUX\n\n";
+  } }
+
+  die "Invalid path: \"".$ARGV[1]."\"";
 }
 
 # Generate validOptions
@@ -469,6 +626,16 @@ sub isValidMKV {
   if( $_[0] !~ /\.mkv$/i ) { return "doesn't have .mkv extension"; }
   if( -s $_[0] == 0 ) { return "is an empty file"; }
   if( `file $_[0]` !~ /matroska/i ) { return "is not a matroska file"; }
+  return 'ok';
+}
+
+# Check if the received path is a valid mkv file
+sub isValidSrt {
+  if( ! -f $_[0] ) { return "is not a file"; }
+  if( $_[0] !~ /\.srt$/i ) { return "doesn't have .srt extension"; }
+  if( -s $_[0] == 0 ) { return "is an empty file"; }
+  if( trim(`file -b --mime-type "$_[0]"`) ne 'text/plain' ) { return "is not a plain text SRT file"; }
+  if( trim(`file -b --mime-encoding "$_[0]"`) eq 'utf-8' ) { return "is already UTF-8 encoded"; }
   return 'ok';
 }
 
