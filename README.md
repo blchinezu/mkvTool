@@ -88,8 +88,3 @@
     Done!
 
     brucelee@eris:~/test$
-
-You can donate through PayPal at [brucelee.duckdns.org/donation/mkvTool](http://brucelee.duckdns.org/donation/mkvTool)
-
-    Since I can't directly add the PayPal donation button here, I've created a simple page
-    which has the Donate button.
